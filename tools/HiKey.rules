@@ -1,0 +1,2 @@
+#add distinguish Hikey board rules
+SUBSYSTEM=="usb", ACTION=="add", ATTR{idVendor}=="18d1", ATTR{idProduct}=="d00d", MODE="0664", RUN+="{shell_path}/device_path.sh %p %s{serial}"
