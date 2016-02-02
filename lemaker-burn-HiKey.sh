@@ -13,17 +13,37 @@ burn_error()
 }
 
 ###########burn image##################################
+system=`ls ./images/|grep hikey`
+ptable=`ls ./images/|grep ptable`
+	
+config_file="config.txt"
+modify_config()
+{
+        usb_dev=`cat $config_file|grep $1`
+        if [ -n "$usb_dev" ]
+        then
+                sed -i "s/^$1.*/$1:$2/g" $config_file
+        else
+                echo "$1:$2">>$config_file
+        fi
+}
 burn_uefi()
 {
-		sudo fastboot -s usb:$1 flash ptable $PWD/images/ptable-linux.img 2>/dev/null || \
+		modify_config $1 0 && \
+		sudo fastboot -s usb:$1 flash ptable $PWD/images/$ptable 2>/dev/null &&\
+		modify_config $1 1 || \
 		burn_error $1 "ptable" && \
-		sudo fastboot -s usb:$1 flash fastboot $PWD/images/fip.bin 2>/dev/null ||\
+		sudo fastboot -s usb:$1 flash fastboot $PWD/images/fip.bin 2>/dev/null &&\
+		modify_config $1 2 || \
 		burn_error $1 "fip" && \
-		sudo fastboot -s usb:$1 flash nvme $PWD/images/nvme.img 2>/dev/null ||\
+		sudo fastboot -s usb:$1 flash nvme $PWD/images/nvme.img 2>/dev/null &&\
+		modify_config $1 3 || \
 		burn_error $1 "nvme" && \
-		sudo fastboot -s usb:$1 flash boot $PWD/images/boot-fat.uefi.img 2>/dev/null ||\
+		sudo fastboot -s usb:$1 flash boot $PWD/images/boot-fat.uefi.img 2>/dev/null &&\
+		modify_config $1 4 || \
 		burn_error $1 "boot" && \
-		sudo fastboot -s usb:$1 flash system $PWD/images/hikey-jessie_alip_20151105-364.emmc.img 2>/dev/null || \
+		sudo fastboot -s usb:$1 flash system $PWD/images/$system 2>/dev/null && \
+		modify_config $1 5 || \
 		burn_error $1 "system" && \
                 sudo fastboot -s usb:$1 oem led2 on 2>/dev/null &&\
                 sudo fastboot -s usb:$1 oem led3 on 2>/dev/null &&\
@@ -63,10 +83,19 @@ if [ $rules_flag -eq 0 ]
 then
 	$PWD/install.sh
 fi
+####################start webserver#######################
+./webserver &
 
 ####################main##################################
+x=0
+trap 'x=1' SIGINT
 while (true)
 do
+		if [ $x -eq 1 ]
+		then
+			break;
+		fi
+
         for usb_dev in /dev/ttyUSB*
         do
                 if test -e $usb_dev
@@ -75,14 +104,19 @@ do
                         echo "********l-loader burn is ok************"
                 fi
         done
-
+	
         sleep 1
 
         read -t 1 -u6 burn_over
-	echo "*****burn: $burn_over****************"	
+#	echo "******$burn_over*******************"
 	if [ -n "$burn_over" ]
 	then
 		burn_uefi $burn_over &
 	fi
 	
 done
+
+ps -axu | grep webserver |grep -v "grep"| awk '{print $2}'|sudo xargs kill -9
+#rm config.txt
+#sleep 1
+#touch config.txt
